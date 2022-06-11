@@ -26,11 +26,19 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 mongoose.connect('mongodb://localhost:27017/userDB', { useNewUrlParser: true });
+
+const secretSchema = new mongoose.Schema({
+  content: String,
+  _id: false,
+});
+
+const Secret = mongoose.model('Secret', secretSchema);
+
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
-  secret: [{ type: String }],
+  secrets: [secretSchema],
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -42,15 +50,13 @@ passport.use(User.createStrategy());
 // passport.serializeUser(User.serializeUser());
 // passport.deserializeUser(User.deserializeUser());
 
-passport.serializeUser(function (user, cb) {
-  process.nextTick(function () {
-    cb(null, { id: user.id, username: user.username, name: user.name });
-  });
+passport.serializeUser(function (user, done) {
+  done(null, user.id);
 });
 
-passport.deserializeUser(function (user, cb) {
-  process.nextTick(function () {
-    return cb(null, user);
+passport.deserializeUser(function (id, done) {
+  User.findById(id, function (err, user) {
+    done(err, user);
   });
 });
 
@@ -101,7 +107,7 @@ app.get('/secrets', (req, res) => {
       console.log(err);
     } else {
       if (foundUsers) {
-        console.log(foundUsers[0].secret);
+        console.log(foundUsers);
         res.render('secrets', { usersWithSecrets: foundUsers });
       }
     }
@@ -159,15 +165,18 @@ app.post('/login', (req, res) => {
   });
 });
 
-app.post('/submit', (req, res) => {
-  const userSecret = req.body.secret;
+app.post('/submit', function (req, res) {
+  const submittedSecret = new Secret({ content: req.body.secret });
 
-  User.findById(req.user.id, (err, foundUser) => {
+  //Once the user is authenticated and their session gets saved, their user details are saved to req.user.
+  // console.log(req.user.id);
+
+  User.findById(req.user.id, function (err, foundUser) {
     if (err) {
       console.log(err);
     } else {
       if (foundUser) {
-        foundUser.secret.push(userSecret);
+        foundUser['secrets'].push(submittedSecret);
         foundUser.save(function () {
           res.redirect('/secrets');
         });
